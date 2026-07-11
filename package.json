@@ -1,0 +1,32 @@
+{
+  "name": "video-compressor-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Android video compression app",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap:sync": "npm run build && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:run": "npm run cap:sync && npx cap run android",
+    "cap:build:apk": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
+    "cap:build:apk:release": "npm run cap:sync && cd android && gradlew.bat assembleRelease",
+    "cap:apk:path": "echo android\\app\\build\\outputs\\apk\\debug\\app-debug.apk",
+    "cap:apk:release:path": "echo android\\app\\build\\outputs\\apk\\release\\app-release.apk"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "vue": "^3.5.39"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "tailwindcss": "^4.3.2",
+    "vite": "^8.1.1"
+  }
+}
