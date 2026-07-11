@@ -48,57 +48,62 @@ defineEmits(['compress-another', 'save'])
 </script>
 
 <template>
-  <section class="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6">
+  <section class="animate-result-in">
     <div class="flex items-start gap-3">
       <div
-        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--success-soft)] text-[var(--success)]"
+        aria-hidden="true"
       >
-        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.25">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <div>
-        <h2 class="text-lg font-semibold text-white">Compression Complete</h2>
-        <p class="mt-1 text-sm text-slate-400">
+      <div class="min-w-0">
+        <h2 class="font-display text-xl font-bold tracking-tight text-[var(--text)]">
+          Ready
+        </h2>
+        <p class="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">
           <template v-if="saved">Saved as {{ savedName }}</template>
           <template v-else-if="browserOnly">
-            Preview only in the browser. On Android you can choose where to save.
+            Preview in browser. On Android you can choose where to save.
           </template>
-          <template v-else>Compressed on this device. Choose where to save it.</template>
+          <template v-else>Compressed on this device. Save it when you’re ready.</template>
         </p>
       </div>
     </div>
 
-    <dl class="mt-6 grid gap-4 grid-cols-2">
-      <div class="rounded-xl bg-slate-950/60 p-4">
-        <dt class="text-sm text-slate-400">Original size</dt>
-        <dd class="mt-1 text-lg font-semibold text-white sm:text-xl">{{ originalSize }}</dd>
-      </div>
-      <div class="rounded-xl bg-slate-950/60 p-4">
-        <dt class="text-sm text-slate-400">Compressed size</dt>
-        <dd class="mt-1 text-lg font-semibold text-emerald-400 sm:text-xl">{{ compressedSize }}</dd>
-      </div>
-      <div class="rounded-xl bg-slate-950/60 p-4">
-        <dt class="text-sm text-slate-400">Size reduced</dt>
-        <dd class="mt-1 text-lg font-semibold text-white sm:text-xl">{{ percentReduced }}%</dd>
-      </div>
-      <div class="rounded-xl bg-slate-950/60 p-4">
-        <dt class="text-sm text-slate-400">Compression time</dt>
-        <dd class="mt-1 text-lg font-semibold text-white sm:text-xl">{{ compressionTime }}</dd>
-      </div>
-    </dl>
+    <div class="mt-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] px-5 py-6 text-center">
+      <p class="text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-faint)]">
+        Size reduced
+      </p>
+      <p class="font-display mt-2 text-[3.25rem] font-extrabold leading-none tracking-tight text-[var(--accent)] tabular-nums">
+        {{ percentReduced }}%
+      </p>
+      <p class="mt-3 text-sm text-[var(--text-muted)]">
+        <span class="text-[var(--text-faint)]">{{ originalSize }}</span>
+        <span class="mx-2 text-[var(--text-faint)]">→</span>
+        <span class="font-semibold text-[var(--success)]">{{ compressedSize }}</span>
+      </p>
+      <p class="mt-2 text-sm text-[var(--text-faint)]">Took {{ compressionTime }}</p>
+    </div>
 
-    <p v-if="saveError" class="mt-4 text-sm text-red-400">{{ saveError }}</p>
+    <p
+      v-if="saveError"
+      class="mt-4 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]"
+      role="alert"
+    >
+      {{ saveError }}
+    </p>
 
     <div class="mt-6 flex flex-col gap-3">
       <PrimaryButton
         v-if="canSave && !saved"
-        :label="saving ? 'Saving...' : 'Save video'"
+        :label="saving ? 'Saving…' : 'Save video'"
         :disabled="saving"
         @click="$emit('save')"
       />
       <PrimaryButton
-        label="Compress another video"
+        label="Compress another"
         variant="secondary"
         :disabled="saving"
         @click="$emit('compress-another')"

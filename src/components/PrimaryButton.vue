@@ -1,6 +1,4 @@
 <script setup>
-import PrimaryButton from './PrimaryButton.vue'
-
 defineProps({
   label: {
     type: String,
@@ -23,11 +21,14 @@ defineEmits(['click'])
 <template>
   <button
     type="button"
-    class="inline-flex w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+    class="inline-flex w-full min-h-[var(--tap)] items-center justify-center gap-2 rounded-[var(--radius-md)] px-5 text-[0.95rem] font-semibold tracking-tight transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-deep)] disabled:cursor-not-allowed disabled:opacity-45"
     :class="{
-      'bg-sky-500 text-white hover:bg-sky-400': variant === 'primary',
-      'border border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700': variant === 'secondary',
-      'text-slate-300 hover:bg-slate-800 hover:text-white': variant === 'ghost',
+      'bg-[var(--accent)] text-[#1a1205] hover:bg-[var(--accent-hover)] active:scale-[0.98]':
+        variant === 'primary',
+      'border border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--text)] hover:border-[var(--accent)]/50 hover:bg-[var(--surface)] active:scale-[0.98]':
+        variant === 'secondary',
+      'text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)]':
+        variant === 'ghost',
     }"
     :disabled="disabled"
     @click="$emit('click')"

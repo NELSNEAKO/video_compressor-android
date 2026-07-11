@@ -151,51 +151,69 @@ function handleCompressAnother() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-950 px-4 py-8 pb-12">
-    <div class="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <AppHeader subtitle="Compress videos locally on your Android phone" />
-
-      <VideoSelectCard
-        :has-file="hasFile"
-        :file-name="selectedFile?.name ?? ''"
-        :file-size="selectedFile ? formatBytes(selectedFile.size) : ''"
-        :loading="isSelecting"
-        :error="selectError"
-        @select="handleSelectVideo"
+  <div class="app-shell px-5 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]">
+    <div class="mx-auto flex w-full max-w-md flex-col gap-8">
+      <AppHeader
+        :compact="screen !== 'setup'"
+        :subtitle="
+          screen === 'setup'
+            ? 'Shrink videos locally on your Android phone.'
+            : undefined
+        "
       />
 
-      <CompressionModeSelector
-        v-model="compressionMode"
-        :disabled="screen === 'compressing' || isCompressing || isSaving"
-      />
-
-      <ProgressBar
-        v-if="screen === 'compressing' || screen === 'result'"
-        :progress="progress"
-        :label="screen === 'result' ? 'Compression finished' : 'Compressing video locally...'"
-      />
-
-      <section
-        v-if="screen === 'setup'"
-        class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6"
-      >
-        <h2 class="text-lg font-semibold text-white">3. Compress &amp; Save</h2>
-        <p class="mt-1 text-sm text-slate-400">
-          Compress first, then choose where to save the video on your phone.
-        </p>
-
-        <p v-if="compressError" class="mt-3 text-sm text-red-400">{{ compressError }}</p>
-
-        <PrimaryButton
-          class="mt-5"
-          :label="isCompressing ? 'Compressing...' : 'Compress video'"
-          :disabled="!canCompress"
-          @click="handleCompress"
+      <!-- Setup: select → mode → compress -->
+      <template v-if="screen === 'setup'">
+        <VideoSelectCard
+          :has-file="hasFile"
+          :file-name="selectedFile?.name ?? ''"
+          :file-size="selectedFile ? formatBytes(selectedFile.size) : ''"
+          :loading="isSelecting"
+          :error="selectError"
+          :disabled="isCompressing || isSaving"
+          @select="handleSelectVideo"
         />
-      </section>
 
+        <CompressionModeSelector
+          v-model="compressionMode"
+          :disabled="isCompressing || isSaving"
+        />
+
+        <section class="animate-fade-up" style="animation-delay: 120ms">
+          <h2 class="font-display text-lg font-bold tracking-tight text-[var(--text)]">
+            Compress
+          </h2>
+          <p class="mt-1 text-sm text-[var(--text-muted)]">
+            Then choose where to save on your phone.
+          </p>
+
+          <p
+            v-if="compressError"
+            class="mt-3 rounded-[var(--radius-sm)] bg-[var(--danger-soft)] px-3 py-2 text-sm text-[var(--danger)]"
+            role="alert"
+          >
+            {{ compressError }}
+          </p>
+
+          <PrimaryButton
+            class="mt-5"
+            :label="isCompressing ? 'Compressing…' : 'Compress video'"
+            :disabled="!canCompress"
+            @click="handleCompress"
+          />
+        </section>
+      </template>
+
+      <!-- Compressing: progress is the hero -->
+      <ProgressBar
+        v-else-if="screen === 'compressing'"
+        :progress="progress"
+        label="Compressing locally"
+      />
+
+      <!-- Result -->
       <ResultCard
-        v-if="screen === 'result' && result"
+        v-else-if="screen === 'result' && result"
         :original-size="result.originalSize"
         :compressed-size="result.compressedSize"
         :percent-reduced="result.percentReduced"

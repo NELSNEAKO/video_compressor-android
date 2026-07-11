@@ -1,11 +1,135 @@
 @import 'tailwindcss';
 
+:root {
+  --bg-deep: #0a0b0f;
+  --bg-mid: #12141c;
+  --surface: #181b24;
+  --surface-raised: #1e222e;
+  --border: #2c3140;
+  --border-strong: #3d4458;
+  --text: #f4f1ea;
+  --text-muted: #9b9fad;
+  --text-faint: #6b7080;
+  --accent: #e8a23a;
+  --accent-hover: #f0b355;
+  --accent-soft: rgba(232, 162, 58, 0.14);
+  --accent-ring: rgba(232, 162, 58, 0.45);
+  --success: #3fbf8f;
+  --success-soft: rgba(63, 191, 143, 0.12);
+  --danger: #ef6b6b;
+  --danger-soft: rgba(239, 107, 107, 0.12);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, sans-serif;
+  --font-body: 'Figtree', ui-sans-serif, sans-serif;
+  --tap: 44px;
+}
+
 html,
 body,
 #app {
-  min-height: 100vh;
+  min-height: 100%;
+  min-height: 100dvh;
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--text);
+  background-color: var(--bg-deep);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Soft studio atmosphere — warm radial wash + faint grain */
+.app-shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgba(232, 162, 58, 0.16), transparent 55%),
+    radial-gradient(80% 50% at 100% 30%, rgba(70, 90, 140, 0.12), transparent 50%),
+    radial-gradient(70% 40% at 0% 80%, rgba(40, 55, 80, 0.18), transparent 45%),
+    linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-deep) 48%, #08090d 100%);
+}
+
+.app-shell::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+.app-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes result-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s ease-out both;
+}
+
+.animate-result-in {
+  animation: result-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.progress-fill {
+  background-image: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    #f5c76a 45%,
+    var(--accent) 90%
+  );
+  background-size: 200% 100%;
+  animation: progress-shimmer 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-result-in,
+  .progress-fill {
+    animation: none !important;
+  }
 }
