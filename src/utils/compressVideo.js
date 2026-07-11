@@ -5,19 +5,6 @@ import { getCompressionPreset } from './compressionPresets.js'
 
 const VideoReencoder = registerPlugin('VideoReencoder')
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result ?? '')
-      const base64 = result.includes(',') ? result.split(',')[1] : result
-      resolve(base64)
-    }
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read video file'))
-    reader.readAsDataURL(file)
-  })
-}
-
 function formatDuration(ms) {
   const seconds = ms / 1000
   if (seconds < 10) return `${seconds.toFixed(1)}s`
@@ -37,8 +24,9 @@ function buildResult(originalBytes, compressedBytes, elapsedMs) {
   }
 }
 
-async function compressVideoMock({ file, mode, onProgress }) {
+async function compressVideoMock({ file, size, mode, onProgress }) {
   const preset = getCompressionPreset(mode)
+  const originalBytes = Number(size) || file?.size || 0
   const startedAt = Date.now()
   let current = 0
 
@@ -53,39 +41,36 @@ async function compressVideoMock({ file, mode, onProgress }) {
     }, 250)
   })
 
-  const compressedBytes = Math.round(file.size * (1 - preset.estimatedReduction))
+  const compressedBytes = Math.round(originalBytes * (1 - preset.estimatedReduction))
   return {
-    ...buildResult(file.size, compressedBytes, Date.now() - startedAt),
+    ...buildResult(originalBytes, compressedBytes, Date.now() - startedAt),
     outputPath: null,
   }
 }
 
-async function compressVideoNative({ file, mode, onProgress }) {
+/**
+ * Native path: pass content:// URI straight to Media3 — no Base64 / full-file JS load.
+ * Output still lands in app cache as a real file for the Save dialog.
+ */
+async function compressVideoNative({ uri, size, mode, onProgress }) {
+  if (!uri) {
+    throw new Error('No video URI available. Select the video again.')
+  }
+
   const preset = getCompressionPreset(mode)
   const stamp = Date.now()
-  const inputName = `vc-input-${stamp}.mp4`
   const outputName = `vc-output-${stamp}.mp4`
+  const originalBytes = Number(size) || 0
   const startedAt = Date.now()
 
   onProgress?.(2)
 
-  const base64 = await fileToBase64(file)
-  await Filesystem.writeFile({
-    path: inputName,
-    data: base64,
-    directory: Directory.Cache,
-  })
-
-  onProgress?.(8)
-
-  const inputUri = await Filesystem.getUri({
-    path: inputName,
-    directory: Directory.Cache,
-  })
   const outputUri = await Filesystem.getUri({
     path: outputName,
     directory: Directory.Cache,
   })
+
+  onProgress?.(8)
 
   let jobId = null
   let listenerHandle = null
@@ -113,13 +98,17 @@ async function compressVideoNative({ file, mode, onProgress }) {
         }
       })
 
-      const accepted = await VideoReencoder.reencodeVideo({
-        inputPath: inputUri.uri,
-        outputPath: outputUri.uri,
-        bitrate: preset.bitrate,
-      })
-
-      jobId = accepted?.jobId ?? null
+      try {
+        const accepted = await VideoReencoder.reencodeVideo({
+          inputPath: uri,
+          outputPath: outputUri.uri,
+          bitrate: preset.bitrate,
+          inputSize: originalBytes,
+        })
+        jobId = accepted?.jobId ?? null
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error?.message || error)))
+      }
     })
 
     onProgress?.(100)
@@ -138,18 +127,12 @@ async function compressVideoNative({ file, mode, onProgress }) {
     }
 
     return {
-      ...buildResult(file.size, compressedBytes, Date.now() - startedAt),
+      ...buildResult(originalBytes, compressedBytes, Date.now() - startedAt),
       outputPath: result.outputPath,
     }
   } finally {
     if (listenerHandle) {
       await listenerHandle.remove()
-    }
-
-    try {
-      await Filesystem.deleteFile({ path: inputName, directory: Directory.Cache })
-    } catch {
-      // Best-effort cleanup of the copied input.
     }
   }
 }
@@ -157,7 +140,9 @@ async function compressVideoNative({ file, mode, onProgress }) {
 /**
  * Compress a picked video.
  * Browser: mock progress + estimated sizes.
- * Android (native): Media3 Transformer via VideoReencoder plugin.
+ * Android (native): Media3 Transformer via content URI (streams; no Base64).
+ *
+ * @param {{ file?: File|null, uri?: string|null, size?: number, mode: string, onProgress?: (n: number) => void }} options
  */
 export async function compressVideo(options) {
   if (Capacitor.isNativePlatform()) {

@@ -45,7 +45,7 @@ async function handleSelectVideo() {
     result.value = null
   } catch (error) {
     if (!isPickerCancelled(error)) {
-      selectError.value = error?.message || 'Could not open the video picker'
+      selectError.value = error?.message || error?.errorMessage || 'Could not open the video picker'
     }
   } finally {
     isSelecting.value = false
@@ -106,6 +106,8 @@ async function handleCompress() {
   try {
     const compressionResult = await compressVideo({
       file: selectedFile.value.file,
+      uri: selectedFile.value.uri,
+      size: selectedFile.value.size,
       mode: compressionMode.value,
       onProgress: (value) => {
         progress.value = value
@@ -123,7 +125,7 @@ async function handleCompress() {
 
     result.value = await promptSave(result.value)
   } catch (error) {
-    compressError.value = error?.message || 'Compression failed'
+    compressError.value = error?.message || error?.errorMessage || 'Compression failed'
     screen.value = 'setup'
     progress.value = 0
   } finally {

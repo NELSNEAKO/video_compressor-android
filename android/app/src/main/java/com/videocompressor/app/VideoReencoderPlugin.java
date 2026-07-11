@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.StatFs;
 import android.provider.OpenableColumns;
 import androidx.activity.result.ActivityResult;
 import androidx.annotation.OptIn;
@@ -33,6 +34,7 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.UUID;
 
 @CapacitorPlugin(name = "VideoReencoder")
@@ -40,6 +42,65 @@ public class VideoReencoderPlugin extends Plugin {
 
     private static final int DEFAULT_BITRATE = 1_000_000;
     private static final int COPY_BUFFER_SIZE = 8192;
+    /** Extra cache headroom beyond the estimated compressed output. */
+    private static final long FREE_SPACE_OVERHEAD_BYTES = 100L * 1024L * 1024L;
+    /** Conservative estimate: compressed file + temp may need ~half the source size. */
+    private static final double FREE_SPACE_INPUT_FRACTION = 0.5;
+
+    @PluginMethod
+    public void pickVideo(PluginCall call) {
+        final Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("video/*");
+        intent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+        );
+
+        startActivityForResult(call, intent, "pickVideoResult");
+    }
+
+    @ActivityCallback
+    private void pickVideoResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            call.reject("cancelled");
+            return;
+        }
+
+        final Uri uri = result.getData().getData();
+        if (uri == null) {
+            call.reject("cancelled");
+            return;
+        }
+
+        try {
+            getContext()
+                .getContentResolver()
+                .takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (final SecurityException ignored) {
+            // Temporary grant from the picker is enough for an in-session compress.
+        }
+
+        final long size = querySize(uri);
+        if (size <= 0) {
+            call.reject("Could not read the selected video size. Try another file.");
+            return;
+        }
+
+        if (!canOpenUri(uri)) {
+            call.reject("Could not open the selected video. Try another file.");
+            return;
+        }
+
+        final JSObject ret = new JSObject();
+        ret.put("uri", uri.toString());
+        ret.put("name", queryDisplayName(uri));
+        ret.put("size", size);
+        call.resolve(ret);
+    }
 
     @PluginMethod
     public void reencodeVideo(PluginCall call) {
@@ -48,6 +109,7 @@ public class VideoReencoderPlugin extends Plugin {
         final Integer width = call.getInt("width");
         final Integer height = call.getInt("height");
         final Integer bitrateValue = call.getInt("bitrate");
+        final Double inputSizeValue = call.getDouble("inputSize");
 
         if (inputPath == null || inputPath.isEmpty()) {
             call.reject("inputPath is required");
@@ -58,7 +120,7 @@ public class VideoReencoderPlugin extends Plugin {
             return;
         }
 
-        final File inputFile = toFile(inputPath);
+        final Uri inputUri = toUri(inputPath);
         final File outputFile = toFile(outputPath);
         final int bitrate = bitrateValue == null || bitrateValue <= 0 ? DEFAULT_BITRATE : bitrateValue;
         // 0 = keep original resolution; only lower bitrate / file size
@@ -66,14 +128,24 @@ public class VideoReencoderPlugin extends Plugin {
         final int targetHeight = height == null || height <= 0 ? 0 : height;
         final String jobId = UUID.randomUUID().toString();
 
-        if (!inputFile.isFile()) {
-            call.reject("Input video was not found: " + inputFile.getAbsolutePath());
+        if (!canOpenUri(inputUri)) {
+            call.reject("Input video was not found or could not be opened.");
             return;
         }
+
+        final long inputSize = inputSizeValue != null && inputSizeValue > 0
+            ? inputSizeValue.longValue()
+            : querySize(inputUri);
 
         final File outputDirectory = outputFile.getParentFile();
         if (outputDirectory != null && !outputDirectory.exists() && !outputDirectory.mkdirs()) {
             call.reject("Could not create output directory");
+            return;
+        }
+
+        final String spaceError = checkFreeSpace(outputDirectory != null ? outputDirectory : getContext().getCacheDir(), inputSize);
+        if (spaceError != null) {
+            call.reject(spaceError);
             return;
         }
 
@@ -87,7 +159,7 @@ public class VideoReencoderPlugin extends Plugin {
         accepted.put("status", "queued");
         call.resolve(accepted);
 
-        startTransform(jobId, inputFile, outputFile, targetWidth, targetHeight, bitrate);
+        startTransform(jobId, inputUri, outputFile, targetWidth, targetHeight, bitrate);
     }
 
     @PluginMethod
@@ -182,7 +254,7 @@ public class VideoReencoderPlugin extends Plugin {
     @OptIn(markerClass = UnstableApi.class)
     private void startTransform(
         final String jobId,
-        final File inputFile,
+        final Uri inputUri,
         final File outputFile,
         final int width,
         final int height,
@@ -193,7 +265,7 @@ public class VideoReencoderPlugin extends Plugin {
         mainHandler.post(() -> {
             try {
                 final EditedMediaItem.Builder editedBuilder = new EditedMediaItem.Builder(
-                    MediaItem.fromUri(Uri.fromFile(inputFile))
+                    MediaItem.fromUri(inputUri)
                 );
 
                 // Only scale when both dimensions are set. Otherwise keep original size.
@@ -274,6 +346,93 @@ public class VideoReencoderPlugin extends Plugin {
         });
     }
 
+    private String checkFreeSpace(final File directory, final long inputSize) {
+        if (directory == null || inputSize <= 0) {
+            return null;
+        }
+
+        try {
+            final StatFs statFs = new StatFs(directory.getAbsolutePath());
+            final long freeBytes = statFs.getAvailableBytes();
+            final long requiredBytes = Math.max(
+                FREE_SPACE_OVERHEAD_BYTES,
+                (long) (inputSize * FREE_SPACE_INPUT_FRACTION) + FREE_SPACE_OVERHEAD_BYTES
+            );
+
+            if (freeBytes < requiredBytes) {
+                return String.format(
+                    Locale.US,
+                    "Not enough free storage to compress this video. Need about %s free, but only %s is available. Free up space and try again.",
+                    formatBytes(requiredBytes),
+                    formatBytes(freeBytes)
+                );
+            }
+        } catch (final Exception ignored) {
+            // If StatFs fails, continue and let Transformer report a real I/O error.
+        }
+
+        return null;
+    }
+
+    private boolean canOpenUri(final Uri uri) {
+        if (uri == null) {
+            return false;
+        }
+
+        final String scheme = uri.getScheme();
+        if ("file".equalsIgnoreCase(scheme)) {
+            final String path = uri.getPath();
+            return path != null && new File(path).isFile();
+        }
+
+        try (final InputStream input = getContext().getContentResolver().openInputStream(uri)) {
+            return input != null;
+        } catch (final Exception exception) {
+            return false;
+        }
+    }
+
+    private long querySize(final Uri uri) {
+        if (uri == null) {
+            return 0L;
+        }
+
+        final String scheme = uri.getScheme();
+        if ("file".equalsIgnoreCase(scheme)) {
+            final String path = uri.getPath();
+            if (path != null) {
+                final File file = new File(path);
+                return file.isFile() ? file.length() : 0L;
+            }
+        }
+
+        try (
+            final Cursor cursor = getContext()
+                .getContentResolver()
+                .query(uri, new String[] { OpenableColumns.SIZE }, null, null, null)
+        ) {
+            if (cursor != null && cursor.moveToFirst()) {
+                final int index = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (index >= 0 && !cursor.isNull(index)) {
+                    return cursor.getLong(index);
+                }
+            }
+        } catch (final Exception ignored) {
+            // Fall through.
+        }
+
+        try (final InputStream input = getContext().getContentResolver().openInputStream(uri)) {
+            if (input != null) {
+                final long available = input.available();
+                return available > 0 ? available : 0L;
+            }
+        } catch (final Exception ignored) {
+            // Fall through.
+        }
+
+        return 0L;
+    }
+
     private String queryDisplayName(final Uri uri) {
         try (
             final Cursor cursor = getContext()
@@ -294,7 +453,7 @@ public class VideoReencoderPlugin extends Plugin {
         }
 
         final String lastSegment = uri.getLastPathSegment();
-        return lastSegment != null ? lastSegment : "compressed-video.mp4";
+        return lastSegment != null ? lastSegment : "video.mp4";
     }
 
     private void emitProgress(
@@ -316,10 +475,32 @@ public class VideoReencoderPlugin extends Plugin {
         notifyListeners("progress", event);
     }
 
+    private static Uri toUri(final String pathOrUri) {
+        if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
+            return Uri.parse(pathOrUri);
+        }
+        return Uri.fromFile(new File(pathOrUri));
+    }
+
     private static File toFile(final String pathOrUri) {
         if (pathOrUri.startsWith("file://")) {
             return new File(Uri.parse(pathOrUri).getPath());
         }
         return new File(pathOrUri);
+    }
+
+    private static String formatBytes(final long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        final double kb = bytes / 1024.0;
+        if (kb < 1024.0) {
+            return String.format(Locale.US, "%.1f KB", kb);
+        }
+        final double mb = kb / 1024.0;
+        if (mb < 1024.0) {
+            return String.format(Locale.US, "%.1f MB", mb);
+        }
+        return String.format(Locale.US, "%.1f GB", mb / 1024.0);
     }
 }

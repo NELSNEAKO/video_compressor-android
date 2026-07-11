@@ -1,9 +1,40 @@
+import { Capacitor, registerPlugin } from '@capacitor/core'
+
+const VideoReencoder = registerPlugin('VideoReencoder')
+
 /**
  * Opens the system file picker for a single video.
- * Works in the browser and in Capacitor Android WebView.
- * Returns { name, size, file } or throws if the user cancels / no file.
+ * Native Android: ACTION_OPEN_DOCUMENT → content:// URI (no file bytes in JS).
+ * Browser: HTML file input → { name, size, file }.
  */
-export function pickVideo() {
+export async function pickVideo() {
+  if (Capacitor.isNativePlatform()) {
+    return pickVideoNative()
+  }
+  return pickVideoBrowser()
+}
+
+async function pickVideoNative() {
+  const picked = await VideoReencoder.pickVideo()
+  const size = Number(picked?.size) || 0
+  const uri = picked?.uri
+
+  if (!uri) {
+    throw new Error('No video selected')
+  }
+  if (size <= 0) {
+    throw new Error('Could not read the selected video size. Try another file.')
+  }
+
+  return {
+    name: picked.name || 'video.mp4',
+    size,
+    uri,
+    file: null,
+  }
+}
+
+function pickVideoBrowser() {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -35,6 +66,7 @@ export function pickVideo() {
       settle(resolve, {
         name: file.name,
         size: file.size,
+        uri: null,
         file,
       })
     }
